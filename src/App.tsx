@@ -368,14 +368,14 @@ function CarbonContributionChart({ carbon }: { carbon: CarbonStatistics | null }
                     <Cell key={entry.category} fill={categoryColors[entry.category]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}gCO2e`, "감축량"]} />
+                <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}gCO₂e`, "감축량"]} />
               </PieChart>
             </ResponsiveContainer>
           </div>
           <div className="donut-center">
             <span>총 절감량</span>
             <strong>{formatKgNumberFromG(total)}</strong>
-            <small>kgCO2e</small>
+            <small>kgCO₂e</small>
           </div>
           <div className="legend-list">
             {data.map((item) => (
@@ -446,7 +446,7 @@ function CarbonTrendChart({ carbon, range, onRange }: { carbon: CarbonStatistics
             <CartesianGrid strokeDasharray="3 5" stroke="#dce9e1" />
             <XAxis dataKey="label" tickLine={false} axisLine={false} />
             <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
-            <Tooltip formatter={(value) => [`${Number(value).toFixed(3)} kgCO2e`, "탄소 절감량"]} />
+            <Tooltip formatter={(value) => [`${Number(value).toFixed(3)} kgCO₂e`, "탄소 절감량"]} />
             <Area type="monotone" dataKey="kg" stroke="#0aa13c" strokeWidth={3} fill="url(#greenArea)" />
           </AreaChart>
         </ResponsiveContainer>
@@ -551,6 +551,7 @@ function DisplayPage({ latest, onApplyScenario }: { latest: DisplayLatest | null
   const status = latest?.status || "waiting";
   const decision = latest?.decision;
   const tone = status === "success" ? "success" : status === "waiting" || status === "recognizing" ? "neutral" : "danger";
+  const photo = getItemPhoto(latest?.item);
 
   useEffect(() => {
     if (!ttsEnabled || !latest?.tts_message || !latest.event_id || lastSpoken.current === latest.event_id || !("speechSynthesis" in window)) return;
@@ -569,6 +570,11 @@ function DisplayPage({ latest, onApplyScenario }: { latest: DisplayLatest | null
           <span>{statusLabel(status, decision)}</span>
         </div>
         <h2>{latest?.item || "검사 대기 중"}</h2>
+        {photo && (
+          <div className="item-photo-frame">
+            <img src={photo.src} alt={`${photo.label} 사진`} />
+          </div>
+        )}
         <p>{latest?.guide || "검사 트레이 위에 분리배출할 물건을 올려주세요."}</p>
         <div className="display-metrics">
           <Metric label="무게" value={`${latest?.weight_g || 0}g`} />
@@ -584,6 +590,13 @@ function DisplayPage({ latest, onApplyScenario }: { latest: DisplayLatest | null
       {SHOW_TEST_PANEL && USE_MOCK && <MockScenarioPanel onApplyScenario={onApplyScenario} />}
     </section>
   );
+}
+
+function getItemPhoto(item?: string | null): { src: string; label: string } | null {
+  const text = item || "";
+  if (text.includes("칫솔")) return { src: "/item-photos/toothbrush.png", label: "칫솔" };
+  if (text.includes("우유팩") || text.includes("우유 팩")) return { src: "/item-photos/milk-carton.png", label: "우유팩" };
+  return null;
 }
 
 function LogsPage({ logs, dateFilter, onDateFilter }: { logs: DisposalLog[]; dateFilter: string; onDateFilter: (value: string) => void }) {
@@ -613,7 +626,7 @@ function CarbonPage({ carbon, trendRange, onTrendRange }: { carbon: CarbonStatis
             <CartesianGrid strokeDasharray="3 5" stroke="#dce9e1" />
             <XAxis dataKey="hour" />
             <YAxis />
-            <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}gCO2e`, "감축량"]} />
+            <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}gCO₂e`, "감축량"]} />
             <Line dataKey="g" stroke="#0aa13c" strokeWidth={3} dot={{ r: 5 }} />
           </ReLineChart>
         </ResponsiveContainer>

@@ -36,12 +36,12 @@ export function readableDateTime(value?: string | null): string {
 }
 
 export function formatG(value: number | null | undefined): string {
-  return `${Number(value || 0).toFixed(1)}gCO2e`;
+  return `${Number(value || 0).toFixed(1)}gCO₂e`;
 }
 
 export function formatKgFromG(value: number | null | undefined): string {
   const kg = Number(value || 0) / 1000;
-  return `${kg >= 1 ? kg.toFixed(1) : kg.toFixed(3)} kgCO2e`;
+  return `${kg >= 1 ? kg.toFixed(1) : kg.toFixed(3)} kgCO₂e`;
 }
 
 export function formatKgNumberFromG(value: number | null | undefined): string {
@@ -96,6 +96,8 @@ export function guideFor(decision: Decision, status: ClassificationStatus, scena
   if (status === "hold" && scenarioText.includes("남아")) return "내용물이 남아 있습니다. 비운 후 다시 배출해주세요.";
   if (status === "hold" && scenarioText.includes("젖은")) return "수분이 감지되었습니다. 물기를 제거한 후 다시 배출해주세요.";
   if (status === "fail") return "안전한 방법으로 별도 배출이 필요합니다.";
+  if (scenarioText.includes("칫솔")) return "일반쓰레기함에 배출해주세요.";
+  if (scenarioText.includes("우유팩") || scenarioText.includes("우유 팩")) return "내용물을 비우고 펼친 뒤 종이함에 배출해주세요.";
   if (decision === "plastic") return "플라스틱함에 배출해주세요.";
   if (decision === "paper") return "종이함에 배출해주세요.";
   if (decision === "can") return "캔함에 배출해주세요.";

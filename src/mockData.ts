@@ -33,6 +33,8 @@ export const scenarios: Scenario[] = [
   { label: "음료가 남아있는 캔", item: "음료가 남아있는 캔", category: "can", decision: "hold", status: "hold", weight_g: 24, has_content: true },
   { label: "비운 캔", item: "캔", category: "can", decision: "can", status: "success", weight_g: 14 },
   { label: "깨진 소주병", item: "깨진 소주병", category: "general", decision: "general", status: "fail", weight_g: 120 },
+  { label: "칫솔", item: "칫솔", category: "general", decision: "general", status: "success", weight_g: 9 },
+  { label: "우유팩", item: "우유팩", category: "paper", decision: "paper", status: "success", weight_g: 18 },
 ];
 
 function makeLog(id: number, scenario: Scenario, minuteOffset: number): DisposalLog {
