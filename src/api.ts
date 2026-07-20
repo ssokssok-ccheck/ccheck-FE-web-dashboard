@@ -4,6 +4,7 @@ import type {
   AlertsResponse,
   ApiEnvelope,
   BinFill,
+  BinFillPrediction,
   CarbonStatistics,
   DisplayLatest,
   PaginatedLogs,
@@ -38,6 +39,7 @@ export const api = {
     return request<CarbonStatistics>(`/api/admin/carbon-statistics?${query.toString()}`);
   },
   binFill: () => request<BinFill>("/api/admin/bin-fill"),
+  binFillPrediction: () => request<BinFillPrediction>("/api/admin/bin-fill-prediction"),
   alerts: (params: { unreadOnly?: boolean; page?: number; size?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.unreadOnly !== undefined) query.set("unread_only", String(params.unreadOnly));

@@ -2,9 +2,12 @@ import type {
   AdminSummary,
   AlertItem,
   AlertsResponse,
+  BinCategoryPrediction,
   BinFill,
+  BinFillPrediction,
   BinKey,
   CarbonStatistics,
+  Confidence,
   DisplayLatest,
   DisposalLog,
   PaginatedLogs,
@@ -98,6 +101,65 @@ const seedAlerts: AlertItem[] = [
   },
 ];
 
+function addHours(base: string, hours: number): string {
+  return nowText(new Date(new Date(base.replace(" ", "T")).getTime() + hours * 3_600_000));
+}
+
+function buildCategoryPrediction(
+  current: number,
+  ratePerHour: number,
+  r2: number,
+  latestAt: string,
+  avgCycleDays: number | null,
+  avgPercentPerThrow: number | null,
+): BinCategoryPrediction {
+  const sampleSize = 6;
+  const history = Array.from({ length: sampleSize }, (_, i) => {
+    const stepsBack = sampleSize - 1 - i;
+    return {
+      created_at: addHours(latestAt, -stepsBack * 3),
+      fill_percent: Number(Math.max(0, Math.min(100, current - ratePerHour * stepsBack * 3)).toFixed(1)),
+    };
+  });
+  const confidence: Confidence = r2 >= 0.7 ? "high" : r2 >= 0.4 ? "medium" : "low";
+  const etaFor = (target: number) => {
+    if (current >= target) return latestAt;
+    return addHours(latestAt, (target - current) / ratePerHour);
+  };
+  const status = current >= 100 ? "already_over_threshold" : ratePerHour <= 0 ? "flat_or_decreasing" : "predicting";
+  const remainingThrows =
+    status === "already_over_threshold" ? 0 : status === "predicting" && avgPercentPerThrow ? Math.ceil((100 - current) / avgPercentPerThrow) : null;
+  return {
+    current_fill_percent: current,
+    sample_size: sampleSize,
+    window_start_at: history[0].created_at,
+    latest_at: latestAt,
+    fill_rate_percent_per_hour: ratePerHour,
+    r_squared: r2,
+    confidence,
+    status,
+    eta_80_percent_at: status === "predicting" ? etaFor(80) : status === "already_over_threshold" ? latestAt : null,
+    eta_100_percent_at: status === "predicting" ? etaFor(100) : status === "already_over_threshold" ? latestAt : null,
+    avg_cycle_days: avgCycleDays,
+    remaining_throws: remainingThrows,
+    history,
+  };
+}
+
+function binFillPrediction(): BinFillPrediction {
+  const latestAt = binFill.updated_at || nowText();
+  return {
+    device_id: binFill.device_id,
+    generated_at: nowText(),
+    categories: {
+      plastic: buildCategoryPrediction(binFill.bin_fill.plastic, 1.8, 0.93, latestAt, 18, 1.2),
+      paper: buildCategoryPrediction(binFill.bin_fill.paper, 0.9, 0.55, latestAt, 18, 0.9),
+      can: buildCategoryPrediction(binFill.bin_fill.can, -0.1, 0.2, latestAt, null, null),
+      general: buildCategoryPrediction(binFill.bin_fill.general, 1.1, 0.5, latestAt, 18, 1.0),
+    },
+  };
+}
+
 let logs = [...seedLogs];
 let binFill = { ...seedBinFill };
 let alerts = [...seedAlerts];
@@ -181,6 +243,7 @@ export const mockApi = {
   },
   carbon: async () => carbonStats(),
   binFill: async () => binFill,
+  binFillPrediction: async () => binFillPrediction(),
   alerts: async ({ page = 1, size = 20, unreadOnly = false }: { page?: number; size?: number; unreadOnly?: boolean } = {}): Promise<AlertsResponse> => {
     const filtered = unreadOnly ? alerts.filter((alert) => !alert.is_read) : alerts;
     return {

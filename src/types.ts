@@ -75,6 +75,36 @@ export interface BinFill {
   updated_at: string | null;
 }
 
+export type PredictionStatus = "insufficient_data" | "flat_or_decreasing" | "already_over_threshold" | "predicting";
+export type Confidence = "high" | "medium" | "low";
+
+export interface BinPredictionPoint {
+  created_at: string;
+  fill_percent: number;
+}
+
+export interface BinCategoryPrediction {
+  current_fill_percent: number;
+  sample_size: number;
+  window_start_at: string | null;
+  latest_at: string | null;
+  fill_rate_percent_per_hour: number | null;
+  r_squared: number | null;
+  confidence: Confidence | null;
+  status: PredictionStatus;
+  eta_80_percent_at: string | null;
+  eta_100_percent_at: string | null;
+  avg_cycle_days: number | null;
+  remaining_throws: number | null;
+  history: BinPredictionPoint[];
+}
+
+export interface BinFillPrediction {
+  device_id: string;
+  generated_at: string;
+  categories: Record<BinKey, BinCategoryPrediction>;
+}
+
 export interface AlertItem {
   id: number;
   bin: BinKey;

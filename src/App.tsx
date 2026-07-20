@@ -31,6 +31,7 @@ import {
   LineChart as ReLineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -43,7 +44,9 @@ import type {
   AdminSummary,
   AlertItem,
   AlertsResponse,
+  BinCategoryPrediction,
   BinFill,
+  BinFillPrediction,
   BinKey,
   CarbonStatistics,
   ClassificationStatus,
@@ -112,6 +115,7 @@ function App() {
   const [logs, setLogs] = useState<DisposalLog[]>([]);
   const [carbon, setCarbon] = useState<CarbonStatistics | null>(null);
   const [binFill, setBinFill] = useState<BinFill | null>(null);
+  const [prediction, setPrediction] = useState<BinFillPrediction | null>(null);
   const [alerts, setAlerts] = useState<AlertsResponse | null>(null);
   const [latest, setLatest] = useState<DisplayLatest | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -120,11 +124,12 @@ function App() {
 
   async function refresh() {
     try {
-      const [nextSummary, nextLogs, nextCarbon, nextBinFill, nextAlerts, nextLatest] = await Promise.all([
+      const [nextSummary, nextLogs, nextCarbon, nextBinFill, nextPrediction, nextAlerts, nextLatest] = await Promise.all([
         client.summary(),
         client.logs({ page: 1, size: 20, date: dateFilter || undefined }),
         client.carbon(),
         client.binFill(),
+        client.binFillPrediction(),
         client.alerts({ page: 1, size: 20 }),
         client.latest(),
       ]);
@@ -132,6 +137,7 @@ function App() {
       setLogs(nextLogs.logs);
       setCarbon(nextCarbon);
       setBinFill(nextBinFill);
+      setPrediction(nextPrediction);
       setAlerts(nextAlerts);
       setLatest(nextLatest);
       setState("ready");
@@ -209,7 +215,7 @@ function App() {
             {page === "display" && <DisplayPage latest={latest} onApplyScenario={applyScenario} />}
             {page === "logs" && <LogsPage logs={logs} dateFilter={dateFilter} onDateFilter={setDateFilter} />}
             {page === "carbon" && <CarbonPage carbon={carbon} trendRange={trendRange} onTrendRange={setTrendRange} />}
-            {page === "bins" && <BinsPage binFill={binFill} />}
+            {page === "bins" && <BinsPage binFill={binFill} prediction={prediction} />}
             {page === "alerts" && <AlertsPage alerts={alerts?.alerts || []} onReadAlert={readAlert} />}
           </>
         )}
@@ -485,6 +491,98 @@ function BinFillStatus({ binFill, compact = false, onNavigate }: { binFill: BinF
   );
 }
 
+const confidenceLabels: Record<string, string> = { high: "높음", medium: "보통", low: "낮음" };
+
+function buildPredictionChartData(prediction: BinCategoryPrediction) {
+  const points = prediction.history.map((point) => ({
+    t: point.created_at,
+    actual: point.fill_percent as number | null,
+    projected: null as number | null,
+  }));
+  const lastPoint = points[points.length - 1];
+  if (lastPoint && prediction.status === "predicting" && prediction.eta_100_percent_at) {
+    lastPoint.projected = lastPoint.actual;
+    points.push({ t: prediction.eta_100_percent_at, actual: null, projected: 100 });
+  }
+  return points;
+}
+
+function BinFillPredictionCard({ label, prediction }: { label: string; prediction: BinCategoryPrediction | null }) {
+  const data = useMemo(() => (prediction ? buildPredictionChartData(prediction) : []), [prediction]);
+
+  if (!prediction || prediction.status === "insufficient_data") {
+    return (
+      <div className="prediction-card">
+        <div className="prediction-card-head">
+          <strong>{label}</strong>
+        </div>
+        <EmptyState text="예측에 필요한 데이터가 아직 부족합니다." />
+      </div>
+    );
+  }
+
+  return (
+    <div className="prediction-card">
+      <div className="prediction-card-head">
+        <strong>{label}</strong>
+        {prediction.confidence && (
+          <span className={`confidence-badge ${prediction.confidence}`}>신뢰도 {confidenceLabels[prediction.confidence]}</span>
+        )}
+      </div>
+      <ResponsiveContainer width="100%" height={140}>
+        <AreaChart data={data} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
+          <defs>
+            <linearGradient id={`predictionArea-${label}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#0aa13c" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="#0aa13c" stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 5" stroke="#dce9e1" />
+          <XAxis dataKey="t" tickFormatter={(value) => readableDateTime(value).slice(5)} tickLine={false} axisLine={false} minTickGap={28} />
+          <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={30} />
+          <Tooltip
+            labelFormatter={(value) => readableDateTime(value as string)}
+            formatter={(value: number, name: string) => [`${Number(value).toFixed(1)}%`, name === "actual" ? "실측" : "예측"]}
+          />
+          <ReferenceLine y={80} stroke="#f08a18" strokeDasharray="4 4" />
+          <Area type="monotone" dataKey="actual" stroke="#0aa13c" strokeWidth={3} fill={`url(#predictionArea-${label})`} />
+          <Area type="monotone" dataKey="projected" stroke="#0aa13c" strokeWidth={2} strokeDasharray="5 4" fill="none" />
+        </AreaChart>
+      </ResponsiveContainer>
+      {prediction.status === "flat_or_decreasing" && (
+        <p className="prediction-note">적재량이 증가하지 않고 있어 도달 시점을 예측할 수 없습니다.</p>
+      )}
+      {prediction.status === "predicting" && prediction.remaining_throws !== null && (
+        <p className="prediction-highlight">
+          <Recycle size={16} />
+          <span>
+            약 <strong>{prediction.remaining_throws}번</strong> 더 배출하면 가득 찹니다
+          </span>
+        </p>
+      )}
+      <div className="prediction-metrics">
+        <Metric label="시간당 증가율" value={prediction.fill_rate_percent_per_hour !== null ? `${prediction.fill_rate_percent_per_hour}%/h` : "-"} />
+        <Metric label="80% 도달 예상" value={readableDateTime(prediction.eta_80_percent_at)} />
+        <Metric label="100% 도달 예상" value={readableDateTime(prediction.eta_100_percent_at)} />
+        <Metric label="평균 수거 주기" value={prediction.avg_cycle_days !== null ? `약 ${prediction.avg_cycle_days}일` : "데이터 부족"} />
+      </div>
+    </div>
+  );
+}
+
+function BinFillPredictionPanel({ prediction }: { prediction: BinFillPrediction | null }) {
+  return (
+    <section className="panel prediction-panel">
+      <PanelTitle title="수거함 포화도 예측" />
+      <div className="prediction-grid">
+        {(["plastic", "paper", "can", "general"] as BinKey[]).map((key) => (
+          <BinFillPredictionCard key={key} label={binLabels[key]} prediction={prediction?.categories[key] ?? null} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function RecentLogs({ logs, onNavigate }: { logs: DisposalLog[]; onNavigate?: () => void }) {
   return (
     <section className="panel logs-panel">
@@ -635,10 +733,11 @@ function CarbonPage({ carbon, trendRange, onTrendRange }: { carbon: CarbonStatis
   );
 }
 
-function BinsPage({ binFill }: { binFill: BinFill | null }) {
+function BinsPage({ binFill, prediction }: { binFill: BinFill | null; prediction: BinFillPrediction | null }) {
   return (
     <section className="page-panel">
       <BinFillStatus binFill={binFill} />
+      <BinFillPredictionPanel prediction={prediction} />
       <p className="updated-text">마지막 갱신: {readableDateTime(binFill?.updated_at)}</p>
     </section>
   );
