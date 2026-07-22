@@ -122,6 +122,8 @@ function App() {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [trendRange, setTrendRange] = useState<TrendRange>("day");
   const [dateFilter, setDateFilter] = useState("");
+  const [logsPage, setLogsPage] = useState(1);
+  const [logsPagination, setLogsPagination] = useState<PaginatedLogs["pagination"]>({ page: 1, size: 20, total_count: 0 });
   const [liveAlert, setLiveAlert] = useState<AlertItem | null>(null);
   const knownAlertIds = useRef<Set<number> | null>(null);
 
@@ -129,7 +131,7 @@ function App() {
     try {
       const [nextSummary, nextLogs, nextCarbon, nextBinFill, nextPrediction, nextAlerts, nextLatest] = await Promise.all([
         client.summary(),
-        client.logs({ page: 1, size: 20, date: dateFilter || undefined }),
+        client.logs({ page: page === "logs" ? logsPage : 1, size: 20, date: dateFilter || undefined }),
         client.carbon(),
         client.binFill(),
         client.binFillPrediction(),
@@ -138,6 +140,7 @@ function App() {
       ]);
       setSummary(nextSummary);
       setLogs(nextLogs.logs);
+      setLogsPagination(nextLogs.pagination);
       setCarbon(nextCarbon);
       setBinFill(nextBinFill);
       setPrediction(nextPrediction);
@@ -157,7 +160,7 @@ function App() {
       if (!document.hidden) void refresh();
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [dateFilter]);
+  }, [dateFilter, logsPage, page]);
 
   useEffect(() => {
     const onPop = () => setPage(pathToPage());
@@ -184,6 +187,7 @@ function App() {
 
   const navigate = (next: Page) => {
     setPage(next);
+    if (next !== "logs") setLogsPage(1);
     window.history.pushState(null, "", `/${next}`);
   };
 
@@ -240,7 +244,15 @@ function App() {
               />
             )}
             {page === "display" && <DisplayPage latest={latest} onApplyScenario={applyScenario} />}
-            {page === "logs" && <LogsPage logs={logs} dateFilter={dateFilter} onDateFilter={setDateFilter} />}
+            {page === "logs" && (
+              <LogsPage
+                logs={logs}
+                pagination={logsPagination}
+                dateFilter={dateFilter}
+                onDateFilter={(value) => { setDateFilter(value); setLogsPage(1); }}
+                onPage={setLogsPage}
+              />
+            )}
             {page === "carbon" && <CarbonPage carbon={carbon} trendRange={trendRange} onTrendRange={setTrendRange} />}
             {page === "bins" && <BinsPage binFill={binFill} prediction={prediction} />}
             {page === "alerts" && <AlertsPage alerts={alerts?.alerts || []} onReadAlert={readAlert} />}
@@ -775,7 +787,23 @@ function getItemPhoto(item?: string | null): { src: string; label: string } | nu
   return null;
 }
 
-function LogsPage({ logs, dateFilter, onDateFilter }: { logs: DisposalLog[]; dateFilter: string; onDateFilter: (value: string) => void }) {
+function LogsPage({
+  logs,
+  pagination,
+  dateFilter,
+  onDateFilter,
+  onPage,
+}: {
+  logs: DisposalLog[];
+  pagination: PaginatedLogs["pagination"];
+  dateFilter: string;
+  onDateFilter: (value: string) => void;
+  onPage: (page: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(pagination.total_count / pagination.size));
+  const startPage = Math.max(1, Math.min(pagination.page - 2, totalPages - 4));
+  const visiblePages = Array.from({ length: Math.min(5, totalPages) }, (_, index) => startPage + index);
+
   return (
     <section className="page-panel">
       <div className="page-toolbar">
@@ -786,6 +814,25 @@ function LogsPage({ logs, dateFilter, onDateFilter }: { logs: DisposalLog[]; dat
         <button onClick={() => onDateFilter("")}>필터 초기화</button>
       </div>
       <RecentLogs logs={logs} />
+      <nav className="log-pagination" aria-label="배출 로그 페이지">
+        <span className="pagination-summary">총 {pagination.total_count.toLocaleString()}건</span>
+        <div className="pagination-buttons">
+          <button type="button" onClick={() => onPage(pagination.page - 1)} disabled={pagination.page <= 1}>이전</button>
+          {visiblePages.map((pageNumber) => (
+            <button
+              type="button"
+              key={pageNumber}
+              className={pageNumber === pagination.page ? "active" : ""}
+              aria-current={pageNumber === pagination.page ? "page" : undefined}
+              onClick={() => onPage(pageNumber)}
+            >
+              {pageNumber}
+            </button>
+          ))}
+          <button type="button" onClick={() => onPage(pagination.page + 1)} disabled={pagination.page >= totalPages}>다음</button>
+        </div>
+        <span className="pagination-current">{pagination.page} / {totalPages} 페이지</span>
+      </nav>
     </section>
   );
 }

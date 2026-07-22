@@ -1191,3 +1191,47 @@ th {
     display: none;
   }
 }
+
+.log-pagination {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+}
+
+.pagination-summary,
+.pagination-current {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.pagination-current { text-align: right; }
+
+.pagination-buttons { display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+.pagination-buttons button {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--green-dark);
+  background: #fbfefc;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.pagination-buttons button:hover:not(:disabled) { border-color: var(--green); background: var(--mint); }
+.pagination-buttons button.active { border-color: var(--green); color: white; background: var(--green); }
+.pagination-buttons button:disabled { opacity: .38; cursor: default; }
+
+@media (max-width: 760px) {
+  .log-pagination { grid-template-columns: 1fr; justify-items: center; }
+  .pagination-current { text-align: center; }
+  .pagination-buttons { flex-wrap: wrap; }
+}
