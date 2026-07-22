@@ -21,6 +21,7 @@ import {
   UserRound,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import {
   Area,
@@ -121,6 +122,8 @@ function App() {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [trendRange, setTrendRange] = useState<TrendRange>("day");
   const [dateFilter, setDateFilter] = useState("");
+  const [liveAlert, setLiveAlert] = useState<AlertItem | null>(null);
+  const knownAlertIds = useRef<Set<number> | null>(null);
 
   async function refresh() {
     try {
@@ -162,6 +165,23 @@ function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  useEffect(() => {
+    const items = alerts?.alerts || [];
+    if (knownAlertIds.current === null) {
+      knownAlertIds.current = new Set(items.map((alert) => alert.id));
+      return;
+    }
+    const newAlert = items.find((alert) => !alert.is_read && !knownAlertIds.current?.has(alert.id));
+    items.forEach((alert) => knownAlertIds.current?.add(alert.id));
+    if (newAlert) setLiveAlert(newAlert);
+  }, [alerts]);
+
+  useEffect(() => {
+    if (!liveAlert) return;
+    const timer = window.setTimeout(() => setLiveAlert(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [liveAlert]);
+
   const navigate = (next: Page) => {
     setPage(next);
     window.history.pushState(null, "", `/${next}`);
@@ -184,6 +204,13 @@ function App() {
 
   return (
     <div className="app-shell">
+      {liveAlert && (
+        <LiveAlertPopup
+          alert={liveAlert}
+          onClose={() => setLiveAlert(null)}
+          onOpen={() => { setLiveAlert(null); navigate("alerts"); }}
+        />
+      )}
       <Sidebar page={page} unreadCount={unreadCount} onNavigate={navigate} />
       <main className="main-shell">
         <Header
@@ -221,6 +248,20 @@ function App() {
         )}
       </main>
     </div>
+  );
+}
+
+function LiveAlertPopup({ alert, onClose, onOpen }: { alert: AlertItem; onClose: () => void; onOpen: () => void }) {
+  return (
+    <aside className="live-alert-popup" role="alert" aria-live="assertive">
+      <div className="live-alert-icon"><AlertTriangle size={27} /></div>
+      <button className="live-alert-content" type="button" onClick={onOpen}>
+        <small>새 수거함 알림</small>
+        <strong>{alert.message}</strong>
+        <span>{alert.bin_label} · 적재량 {alert.fill}% · {readableDateTime(alert.created_at)}</span>
+      </button>
+      <button className="live-alert-close" type="button" aria-label="알림 닫기" onClick={onClose}><X size={18} /></button>
+    </aside>
   );
 }
 
@@ -333,7 +374,7 @@ function DashboardPage(props: {
       <div className="bottom-row">
         <BinFillStatus binFill={props.binFill} compact onNavigate={() => props.onNavigate("bins")} />
         <RecentLogs logs={props.logs.slice(0, 6)} onNavigate={() => props.onNavigate("logs")} />
-        <AiInsightCard rate={rate} />
+        <AiInsightCard summary={props.summary} />
       </div>
     </section>
   );
@@ -623,21 +664,58 @@ function RecentAlerts({ alerts, onNavigate, onReadAlert }: { alerts: AlertItem[]
   );
 }
 
-function AiInsightCard({ rate }: { rate: number }) {
+function AiInsightCard({ summary }: { summary: AdminSummary | null }) {
+  const [weeklyGoal, setWeeklyGoal] = useState(() => {
+    const saved = Number(window.localStorage.getItem("ccheck-weekly-goal"));
+    return Number.isFinite(saved) && saved > 0 ? saved : 100;
+  });
+  const [goalInput, setGoalInput] = useState(String(weeklyGoal));
+  const weeklyCount = summary?.current_week_total_count || 0;
+  const achievement = weeklyGoal > 0 ? Math.round((weeklyCount / weeklyGoal) * 100) : 0;
+  const progressWidth = Math.min(100, achievement);
+  const change = summary?.success_rate_change_percent;
+
+  const saveGoal = () => {
+    const nextGoal = Math.max(1, Math.round(Number(goalInput) || weeklyGoal));
+    setWeeklyGoal(nextGoal);
+    setGoalInput(String(nextGoal));
+    window.localStorage.setItem("ccheck-weekly-goal", String(nextGoal));
+  };
+
+  const insightMessage = change == null
+    ? "오늘 분리배출 데이터가 아직 없어요."
+    : change > 0
+      ? <>오늘 성공률이 과거 일평균보다 <strong>{change}% 높아요.</strong></>
+      : change < 0
+        ? <>오늘 성공률이 과거 일평균보다 <strong>{Math.abs(change)}% 낮아요.</strong></>
+        : "오늘 성공률이 과거 일평균과 같아요.";
+
   return (
     <section className="panel insight-panel">
       <PanelTitle title="오늘의 AI 인사이트" />
       <div className="insight-body">
         <Leaf size={56} />
-        <p>
-          분리배출 성공률이 <strong>{Math.max(0, 90 - rate)}%</strong> 상승했어요.
-        </p>
-        <small>계속 잘하고 있어요.</small>
-        <div>
+        <p>{insightMessage}</p>
+        <small>과거 {summary?.success_rate_comparison_days || 0}일의 일별 성공률 평균과 비교합니다.</small>
+        <div className="goal-summary">
           <span>주간 목표 달성률</span>
-          <b>85%</b>
+          <b>{achievement}%</b>
         </div>
-        <div className="goal-bar"><span /></div>
+        <div className="goal-bar"><span style={{ width: `${progressWidth}%` }} /></div>
+        <small>이번 주 {weeklyCount}건 / 목표 {weeklyGoal}건</small>
+        <div className="goal-setting">
+          <label htmlFor="weekly-goal">주간 목표</label>
+          <input
+            id="weekly-goal"
+            type="number"
+            min="1"
+            step="1"
+            value={goalInput}
+            onChange={(event) => setGoalInput(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") saveGoal(); }}
+          />
+          <button type="button" onClick={saveGoal}>저장</button>
+        </div>
       </div>
     </section>
   );

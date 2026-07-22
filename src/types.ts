@@ -32,6 +32,12 @@ export interface AdminSummary {
   today_total_count: number;
   today_success_count: number;
   today_hold_count: number;
+  today_success_rate?: number | null;
+  historical_average_daily_success_rate?: number | null;
+  success_rate_change_percent?: number | null;
+  success_rate_comparison_days?: number;
+  current_week_total_count?: number;
+  current_week_start_date?: string;
   alert_count: number;
   updated_at: string;
 }
